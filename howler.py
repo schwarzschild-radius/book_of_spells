@@ -1,51 +1,72 @@
-#! /usr/bin/python3
+#! /usr/bin/env python3
 
 import hedwig
-import subprocess
+import subprocess as sp
 from enum import Enum
 from tempfile import gettempdir
+from time import process_time, time
+import logging
 import yaml
 import os
+from datetime import datetime, timedelta
+import quill
+import sys
+from io import StringIO
 
-class Status(Enum):
-    SUCCESS = 0,
-    FAIL = 1
 
-def run_process(command):
-    out = subprocess.run(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
-    if out.returncode == 0:
-        return (Status.SUCCESS, out.stdout, out.stderr)
-    return (Status.FAIL, out.stdout, out.stderr)
+def run_process(command, env={}):
+    my_env = {**os.environ.copy(), **env}
+    result = {}
+    start_time = time()
+    out = sp.Popen(command, shell=True, stderr=sp.PIPE, stdout=sp.PIPE, text=True,
+                   env=my_env)
+    stdout, stderr = out.stdout.read(), out.stderr.read()
+    end_time = time()
+    result = {'status': 'Success' if stderr == '' else 'Failed',
+              'stdout': stdout, 'stderr': stderr, 'time_elapsed': timedelta(seconds=(end_time - start_time))}
+    return result
 
-def send_howler(config, command):
-    howler = hedwig.PostBox(config)
-    status, stdout, stderr = run_process(command)
-    if status == Status.SUCCESS:
-        config["subject"] = config["subject"].format(status = "SUCCESS", command = command[0])
-    else:
-        config["subject"] = config["subject"].format(status = "FAIL", command = command[0])
-        fstderr = open(gettempdir() + "/" + str(os.getpid()) + "_stderr.log")
-        f = open(fstderr, 'w')
-        f.write(stderr.decode())
-        f.close()
-        howler.addAttachment(fstderr, command[0] + "_stderr.log")
-        f.close()
-    print(config["subject"])
-    if stdout.decode() != '':
-        fstdout = gettempdir() + "/" + str(os.getpid()) + "_stdout.log"
-        f = open(fstdout, 'w')
-        f.write(stdout.decode())
-        f.close()
-        howler.addAttachment(fstdout, command[0] + "_stdout.log")
-        f.close()
-    howler.sendMail([])
+
+def get_howler_state():
+    howler_state = {
+        'date': datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+    }
+    return howler_state
+
+
+def send_howler(mail_config, command):
+    result = run_process(
+        command, mail_config['env'] if 'env' in mail_config else {})
+    replacements = {**get_howler_state(), **result}
+    replacements['command'] = command
+    MailMan = hedwig.get_connection_from_passwd_file(
+        mail_config['smtp_server'], mail_config['smtp_port'], mail_config['from'], mail_config['passwd_file'], mail_config['private_key']) if config['with_passwd'] else hedwig.get_connection(
+        mail_config['smtp_server'], mail_config['dns_server'])
+    mail = hedwig.create_mail()
+    hedwig.add_from(mail, mail_config['from'])
+    hedwig.add_to(mail, mail_config['to'])
+    hedwig.add_subject(
+        mail, quill.format_string(mail_config['subject'], replacements))
+    hedwig.add_body(mail, quill.format_string(
+        mail_config['body'], replacements) if 'body' in mail_config else '')
+    if result['status'] != 'Success':
+        hedwig.add_attachment_from_string(mail, 'stderr.txt', result['stderr'])
+    if result['stdout'] != '':
+        hedwig.add_attachment_from_string(mail, 'stdout.txt', result['stdout'])
+    hedwig.send_mail(MailMan, mail)
+    MailMan.close()
+
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("config_file", help = "yaml file with mail configuration")
-    parser.add_argument("command", help = "command to run")
+    parser.add_argument(
+        "config_file", help="yaml file with mail configuration")
+    parser.add_argument('--with-passwd', action='store_true',
+                        help="Use a password less service")
+    parser.add_argument("command", help="command to run")
     args = parser.parse_args()
     with open(args.config_file, 'r') as config_file:
         config = yaml.safe_load(config_file)
-        send_howler(config, args.command.split(' '))
+        config['with_passwd'] = True if args.with_passwd else False
+        send_howler(config, args.command)
