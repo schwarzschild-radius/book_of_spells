@@ -12,19 +12,7 @@ from datetime import datetime, timedelta
 import quill
 import sys
 from io import StringIO
-
-
-def run_process(command, env={}):
-    my_env = {**os.environ.copy(), **env}
-    result = {}
-    start_time = time()
-    out = sp.Popen(command, shell=True, stderr=sp.PIPE, stdout=sp.PIPE, text=True,
-                   env=my_env)
-    stdout, stderr = out.stdout.read(), out.stderr.read()
-    end_time = time()
-    result = {'status': 'Success' if stderr == '' else 'Failed',
-              'stdout': stdout, 'stderr': stderr, 'time_elapsed': timedelta(seconds=(end_time - start_time))}
-    return result
+import wand
 
 
 def get_howler_state():
@@ -35,7 +23,7 @@ def get_howler_state():
 
 
 def send_howler(mail_config, command):
-    result = run_process(
+    result = wand.run_process_unified_log(
         command, mail_config['env'] if 'env' in mail_config else {})
     replacements = {**get_howler_state(), **result}
     replacements['command'] = command
@@ -49,10 +37,7 @@ def send_howler(mail_config, command):
         mail, quill.format_string(mail_config['subject'], replacements))
     hedwig.add_body(mail, quill.format_string(
         mail_config['body'], replacements) if 'body' in mail_config else '')
-    if result['status'] != 'Success':
-        hedwig.add_attachment_from_string(mail, 'stderr.txt', result['stderr'])
-    if result['stdout'] != '':
-        hedwig.add_attachment_from_string(mail, 'stdout.txt', result['stdout'])
+    hedwig.add_attachment_from_string(mail, 'log.txt', result['log'])
     hedwig.send_mail(MailMan, mail)
     MailMan.close()
 
