@@ -10,7 +10,7 @@ def run_process(command, env={}):
     my_env = {**os.environ.copy(), **env}
     result = {}
     start_time = time()
-    out = sp.Popen(command, shell=True, stderr=sp.PIPE, stdout=sp.PIPE, text=True,
+    out = sp.run(command.split(), stderr=sp.PIPE, stdout=sp.PIPE, text=True,
                    env=my_env)
     stdout, stderr = out.stdout.read(), out.stderr.read()
     end_time = time()
@@ -18,16 +18,16 @@ def run_process(command, env={}):
               'stdout': stdout, 'stderr': stderr, 'time_elapsed': timedelta(seconds=(end_time - start_time))}
     return result
 
-def run_process_unified_log(command, env={}):
+def run_process_with_unified_log(command, env={}):
     my_env = {**os.environ.copy(), **env}
     result = {}
     f = tmp.TemporaryFile()
     start_time = time()
-    out = sp.Popen(command, shell=True, stderr=f, stdout=f, text=True,
+    out = sp.run(command.split(), stderr=f, stdout=f, text=True,
                    env=my_env)
     end_time = time()
     f.seek(0)
-    result = {'status': 'Success' if out.returncode else 'Failed',
-              'log': f.read().decode(), 'time_elapsed': timedelta(seconds=(end_time - start_time))}
+    result = {'status': 'Success' if out.returncode == 0 else 'Failed',
+              'log': f.read(), 'time_elapsed': timedelta(seconds=(end_time - start_time))}
     f.close()
     return result

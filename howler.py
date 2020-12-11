@@ -23,7 +23,7 @@ def get_howler_state():
 
 
 def send_howler(mail_config, command):
-    result = wand.run_process_unified_log(
+    result = wand.run_process_with_unified_log(
         command, mail_config['env'] if 'env' in mail_config else {})
     replacements = {**get_howler_state(), **result}
     replacements['command'] = command
