@@ -1,29 +1,36 @@
 #! /usr/bin/env python3
 
 import logging
-import mimetypes
-import os
 import smtplib
-import sys
-import yaml
-import pprint
 from dns import resolver
 import re
 import socket
 
-from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from mischief_managed import decrypt_blob
 
+import requests
 
-def get_connection_from_passwd_file(server, port, user, passwd_file, private_key_file):
+
+def slack_through_webhook(webhook_url, data):
+    r = requests.post(webhook_url,
+                      headers={'Content-type': 'application/json'},
+                      data=data)
+    if r.status_code != 200:
+        return True
+    return False
+
+
+def get_connection_from_passwd_file(server, port, user, passwd_file,
+                                    private_key_file):
     server = smtplib.SMTP(host=server, port=port)
     logging.debug(server.ehlo())
     logging.debug(server.starttls())
-    server.login(user=user, password=decrypt_blob(passwd_file, private_key_file))
+    server.login(user=user,
+                 password=decrypt_blob(passwd_file, private_key_file))
     return server
 
 
