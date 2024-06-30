@@ -1,4 +1,4 @@
-# Book_Of_Spells
+# Book of Spells
 Handy Utilities for routine tasks
 
 ## Requirements
